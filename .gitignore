@@ -3,6 +3,8 @@ database.py
 config/database.py
 */config/database.py
 
+.DS_Store
+*/DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
