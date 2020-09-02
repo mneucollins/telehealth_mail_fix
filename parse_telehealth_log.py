@@ -5,24 +5,30 @@ Usage:
 import mysql.connector
 from mysql.connector import errorcode
 import config.database as database
-# import datetime as dt
-
-# import pprint
+import sys, getopt
 import os
 
 _ini_errors = []
 _five_day_errors = []
 
-def main():
+def main(argv):
     """ loop through a log file looking for fsock open errors, and save the pid 
         for the record on which it pid it occurs on
-    """
+    """    
+    try:
+        opts, args = getopt.getopt(argv, "l:", ["logfile="])
+    except getopt.GetoptError:
+      print ('parse_telehealth_log.py -l <logfilename> [--logfile <logfilename>]')
+      sys.exit(2)
+    for opt, arg in opts:
+        if opt in ("-l", "--logfile"):
+            create_error_list(arg)
+            telehealth_log_cleanup()
+        else:
+            print('logfile argument not specified or invalid')            
     
-    # hl7_directoryops.get_incoming()
-    create_error_list()
-    telehealth_log_cleanup()
 
-def create_error_list():
+def create_error_list(logfile):
     global _ini_errors
     global _five_day_errors
     
@@ -36,7 +42,7 @@ def create_error_list():
         list of lists, fsockerrors(ini_errors, 5day_errors)
     """
 
-    log_file = open(os.path.join('log_file','Telehealth_Email_Ini2020-08-22.txt'), 'r')
+    log_file = open(os.path.join('log_file',logfile), 'r')
     
     ini_errors = []
     five_day_errors = []
@@ -67,25 +73,45 @@ def create_error_list():
     
     
 def telehealth_log_cleanup():
-    cnx = mysql.connector.connect(**database.pat_sched_local)
+    cnx = mysql.connector.connect(**database.pat_sched_server)
     cursor = cnx.cursor(dictionary=True)
 
-    for ini_error in _ini_errors:
-        print('ini_error: ', ini_error)
-        sql = ''' UPDATE patient_email_log
-                    SET initial_date_sent = NULL
-                    WHERE f_appt_id = %s'''
-        cursor.execute (sql,(ini_error,))   
-    for five_day_error in _five_day_errors:
-        print('five_day_error: ', five_day_error)                   
-        sql = ''' UPDATE patient_email_log
-                    SET secondary_date_sent = NULL
-                    WHERE f_appt_id = %s'''
-        cursor.execute (sql,(five_day_error,))   
-    
-    cnx.commit
-    
+    try:
+        for ini_error in _ini_errors:
+            print('ini_error: ', ini_error)
+            sql = ''' UPDATE patient_email_log
+                    SET `initial_date_sent` = NULL
+                    WHERE `f_appt_id` = %s'''
+            cursor.execute (sql,( int(ini_error),))
+            print(cursor.statement)
+            cnx.commit()
+            
+        for five_day_error in _five_day_errors:
+            print('five_day_error: ', five_day_error)                   
+            sql = ''' UPDATE patient_email_log
+                        SET `secondary_date_sent` = NULL
+                        WHERE f_appt_id = %s'''
+            cursor.execute (sql,(int(five_day_error),))
+            print(cursor.statement)
+            cnx.commit()
+            
+    except mysql.connector.Error as err:
+        db_error(err)
+
+    finally:
+        cursor.close()
+        cnx.close()
+
+
+def db_error(err):
+    if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+        print("Something is wrong with your user name or password")
+    elif err.errno == errorcode.ER_BAD_DB_ERROR:
+        print("Database does not exist")
+    else:
+        print(err)    
+
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
 
